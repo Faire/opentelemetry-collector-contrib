@@ -5,10 +5,8 @@ package datadogreceiver // import "github.com/open-telemetry/opentelemetry-colle
 
 import (
 	"context"
-	"time"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
 
@@ -27,12 +25,7 @@ func NewFactory() receiver.Factory {
 }
 
 func createDefaultConfig() component.Config {
-	return &Config{
-		ServerConfig: confighttp.ServerConfig{
-			Endpoint: "localhost:8126",
-		},
-		ReadTimeout: 60 * time.Second,
-	}
+	return NewConfig()
 }
 
 func createTracesReceiver(_ context.Context, params receiver.Settings, cfg component.Config, consumer consumer.Traces) (receiver.Traces, error) {
