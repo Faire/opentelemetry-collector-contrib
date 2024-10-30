@@ -10,8 +10,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/DataDog/go-sqllexer"
+	"github.com/outcaste-io/ristretto"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	semconv "go.opentelemetry.io/collector/semconv/v1.27.0"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/filter/expr"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/filter/filterspan"
@@ -22,6 +25,7 @@ type spanProcessor struct {
 	config           Config
 	toAttributeRules []toAttributeRule
 	skipExpr         expr.BoolExpr[ottlspan.TransformContext]
+	sqlCache         *ristretto.Cache
 }
 
 // toAttributeRule is the compiled equivalent of config.ToAttributes field.
@@ -63,7 +67,42 @@ func newSpanProcessor(config Config) (*spanProcessor, error) {
 		}
 	}
 
+	sqlCache, err := newSQLCache()
+	if err != nil {
+		return nil, err
+	}
+
+	sp.sqlCache = sqlCache
 	return sp, nil
+}
+
+// newSQLCache returns a new ristretto.Cache for storing normalized SQL queries.
+func newSQLCache() (*ristretto.Cache, error) {
+	cfg := &ristretto.Config{
+		// We know that the maximum allowed resource length is 5K. This means that
+		// in 5MB we can store a minimum of 1000 queries.
+		MaxCost: 5000000,
+
+		// An approximated worst-case scenario when the cache is filled with small
+		// queries averaged as being of length 11 ("LOCK TABLES"), we would be able
+		// to fit 476K of them into 5MB of cost.
+		//
+		// We average it to 500K and multiply 10x as the documentation recommends.
+		NumCounters: 500000 * 10,
+
+		BufferItems: 64,    // default recommended value
+		Metrics:     false, // disable hit/miss counters
+	}
+	cache, err := ristretto.NewCache(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return cache, nil
+}
+
+func (sp *spanProcessor) Shutdown(context.Context) error {
+	sp.sqlCache.Close()
+	return nil
 }
 
 func (sp *spanProcessor) processTraces(ctx context.Context, td ptrace.Traces) (ptrace.Traces, error) {
@@ -87,6 +126,7 @@ func (sp *spanProcessor) processTraces(ctx context.Context, td ptrace.Traces) (p
 						continue
 					}
 				}
+				sp.processAttributes(span)
 				sp.processFromAttributes(span)
 				sp.processToAttributes(span)
 				sp.processUpdateStatus(span)
@@ -237,4 +277,149 @@ func (sp *spanProcessor) processUpdateStatus(span ptrace.Span) {
 			span.Status().SetMessage("")
 		}
 	}
+}
+
+func (sp *spanProcessor) processAttributes(span ptrace.Span) {
+	if sp.config.Attributes == nil {
+		return
+	}
+
+	sp.processDBAttributes(span)
+}
+
+func (sp *spanProcessor) processDBAttributes(span ptrace.Span) {
+	if sp.config.Attributes.DB == nil {
+		return
+	}
+
+	sp.processSQLAttributes(span)
+}
+
+func (sp *spanProcessor) processSQLAttributes(span ptrace.Span) {
+	sqlConfig := sp.config.Attributes.DB.SQL
+	if sqlConfig == nil || !sqlConfig.Enabled {
+		return
+	}
+
+	dbSystem, ok := span.Attributes().Get(semconv.AttributeDBSystem)
+	if !ok || !isSQL(dbSystem.Str()) {
+		return
+	}
+
+	dbQueryText, ok := span.Attributes().Get(semconv.AttributeDBQueryText)
+	if !ok || dbQueryText.Str() == "" {
+		return
+	}
+
+	obfuscator := sqllexer.NewObfuscator(
+		sqllexer.WithReplaceDigits(true),
+		sqllexer.WithReplaceBoolean(true),
+		sqllexer.WithReplaceNull(true),
+	)
+
+	normalizer := sqllexer.NewNormalizer(
+		sqllexer.WithCollectCommands(sqlConfig.OperationName),
+		sqllexer.WithCollectTables(sqlConfig.CollectionName),
+		sqllexer.WithCollectProcedures(sqlConfig.OperationName),
+		sqllexer.WithRemoveSpaceBetweenParentheses(true),
+	)
+
+	var normalizedQuery *NormalizedQuery
+	cachedQuery, ok := sp.sqlCache.Get(dbQueryText.Str())
+
+	if ok {
+		normalizedQuery = cachedQuery.(*NormalizedQuery)
+	} else {
+		query, metadata, err := sqllexer.ObfuscateAndNormalize(
+			dbQueryText.Str(),
+			obfuscator,
+			normalizer,
+			sqllexer.WithDBMS(sqllexer.DBMSType(dbSystem.Str())),
+		)
+
+		if err != nil {
+			return
+		}
+
+		normalizedQuery = &NormalizedQuery{
+			Query:    query,
+			Metadata: metadata,
+		}
+
+		sp.sqlCache.Set(dbQueryText.Str(), normalizedQuery, normalizedQuery.Cost())
+	}
+
+	span.Attributes().PutStr(semconv.AttributeDBQueryText, normalizedQuery.Query)
+
+	// SemConv specifies that these attributes should only be capture for queries that contain a single operation entry of them.
+	// (https://github.com/open-telemetry/semantic-conventions/blob/main/docs/database/database-spans.md#common-attributes)
+	if normalizedQuery.Metadata.Tables != nil && len(normalizedQuery.Metadata.Tables) == 1 {
+		span.Attributes().PutStr(semconv.AttributeDBCollectionName, normalizedQuery.Metadata.Tables[0])
+	}
+	if normalizedQuery.Metadata.Procedures != nil && len(normalizedQuery.Metadata.Procedures) == 1 {
+		span.Attributes().PutStr(semconv.AttributeDBOperationName, normalizedQuery.Metadata.Procedures[0])
+	}
+	if normalizedQuery.Metadata.Commands != nil && len(normalizedQuery.Metadata.Commands) == 1 {
+		span.Attributes().PutStr(semconv.AttributeDBOperationName, normalizedQuery.Metadata.Commands[0])
+	}
+}
+
+// NormalizedQuery specifies information about an obfuscated SQL query.
+type NormalizedQuery struct {
+	Query    string                      `json:"query"`    // the obfuscated SQL query
+	Metadata *sqllexer.StatementMetadata `json:"metadata"` // metadata extracted from the SQL query
+}
+
+// Cost returns the number of bytes needed to store all the fields
+// of this NormalizedQuery.
+func (oq *NormalizedQuery) Cost() int64 {
+	return int64(len(oq.Query)) + int64(oq.Metadata.Size)
+}
+
+// https://github.com/open-telemetry/semantic-conventions/blob/main/docs/database/sql.md
+func isSQL(dbSystem string) bool {
+	switch dbSystem {
+	case semconv.AttributeDBSystemCockroachdb:
+		fallthrough
+	case semconv.AttributeDBSystemDB2:
+		fallthrough
+	case semconv.AttributeDBSystemDerby:
+		fallthrough
+	case semconv.AttributeDBSystemEDB:
+		fallthrough
+	case semconv.AttributeDBSystemFirebird:
+		fallthrough
+	case semconv.AttributeDBSystemH2:
+		fallthrough
+	case semconv.AttributeDBSystemHSQLDB:
+		fallthrough
+	case semconv.AttributeDBSystemIngres:
+		fallthrough
+	case semconv.AttributeDBSystemInterbase:
+		fallthrough
+	case semconv.AttributeDBSystemMariaDB:
+		fallthrough
+	case semconv.AttributeDBSystemMaxDB:
+		fallthrough
+	case semconv.AttributeDBSystemMSSQL:
+		fallthrough
+	case semconv.AttributeDBSystemMssqlcompact:
+		fallthrough
+	case semconv.AttributeDBSystemMySQL:
+		fallthrough
+	case semconv.AttributeDBSystemOracle:
+		fallthrough
+	case semconv.AttributeDBSystemPervasive:
+		fallthrough
+	case semconv.AttributeDBSystemPostgreSQL:
+		fallthrough
+	case semconv.AttributeDBSystemSqlite:
+		fallthrough
+	case semconv.AttributeDBSystemTrino:
+		fallthrough
+	case semconv.AttributeDBSystemOtherSQL:
+		return true
+	default:
+	}
+	return false
 }

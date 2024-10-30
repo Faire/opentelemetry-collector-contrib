@@ -43,6 +43,9 @@ func TestFactory_CreateTraces(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.NotNil(t, tp)
+
+	// verifies whether all the go routines cleanly shut down
+	assert.NoError(t, tp.Shutdown(context.Background()))
 }
 
 // TestFactory_CreateTraces_InvalidConfig ensures the default configuration
@@ -59,7 +62,6 @@ func TestFactory_CreateTraces_InvalidConfig(t *testing.T) {
 			name: "missing_config",
 			err:  errMissingRequiredField,
 		},
-
 		{
 			name: "invalid_regexp",
 			cfg: Name{

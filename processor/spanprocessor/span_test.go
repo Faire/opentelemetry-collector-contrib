@@ -5,6 +5,7 @@ package spanprocessor
 
 import (
 	"context"
+	"github.com/DataDog/go-sqllexer"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,7 +14,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/processor/processortest"
-	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
+	conventions "go.opentelemetry.io/collector/semconv/v1.27.0"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal/testdata"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/filter/filterconfig"
@@ -30,6 +31,7 @@ func TestNewTraces(t *testing.T) {
 	tp, err := factory.CreateTraces(context.Background(), processortest.NewNopSettings(), cfg, consumertest.NewNop())
 	require.NoError(t, err)
 	require.NotNil(t, tp)
+	require.NoError(t, tp.Shutdown(context.Background()))
 }
 
 // Common structure for the test cases.
@@ -113,6 +115,7 @@ func TestSpanProcessor_NilEmptyData(t *testing.T) {
 			assert.NoError(t, ptracetest.CompareTraces(tt.output, tt.input))
 		})
 	}
+	require.NoError(t, tp.Shutdown(context.Background()))
 }
 
 // TestSpanProcessor_Values tests all possible value types.
@@ -213,6 +216,7 @@ func TestSpanProcessor_Values(t *testing.T) {
 	for _, tc := range testCases {
 		runIndividualTestCase(t, tc, tp)
 	}
+	require.NoError(t, tp.Shutdown(context.Background()))
 }
 
 // TestSpanProcessor_MissingKeys tests that missing a key in an attribute map results in no span name changes.
@@ -289,6 +293,7 @@ func TestSpanProcessor_MissingKeys(t *testing.T) {
 	for _, tc := range testCases {
 		runIndividualTestCase(t, tc, tp)
 	}
+	require.NoError(t, tp.Shutdown(context.Background()))
 }
 
 // TestSpanProcessor_Separator ensures naming a span with a single key and separator will only contain the value from
@@ -319,6 +324,8 @@ func TestSpanProcessor_Separator(t *testing.T) {
 		map[string]any{
 			"key1": "bob",
 		}), traceData))
+
+	require.NoError(t, tp.Shutdown(context.Background()))
 }
 
 // TestSpanProcessor_NoSeparatorMultipleKeys tests naming a span using multiple keys and no separator.
@@ -349,6 +356,8 @@ func TestSpanProcessor_NoSeparatorMultipleKeys(t *testing.T) {
 			"key1": "bob",
 			"key2": 123,
 		}), traceData))
+
+	require.NoError(t, tp.Shutdown(context.Background()))
 }
 
 // TestSpanProcessor_SeparatorMultipleKeys tests naming a span with multiple keys and a separator.
@@ -384,6 +393,8 @@ func TestSpanProcessor_SeparatorMultipleKeys(t *testing.T) {
 			"key3": 234.129312,
 			"key4": true,
 		}), traceData))
+
+	require.NoError(t, tp.Shutdown(context.Background()))
 }
 
 // TestSpanProcessor_NilName tests naming a span when the input span had no name.
@@ -413,6 +424,8 @@ func TestSpanProcessor_NilName(t *testing.T) {
 		map[string]any{
 			"key1": "bob",
 		}), traceData))
+
+	require.NoError(t, tp.Shutdown(context.Background()))
 }
 
 // TestSpanProcessor_ToAttributes
@@ -497,6 +510,8 @@ func TestSpanProcessor_ToAttributes(t *testing.T) {
 		require.NotNil(t, tp)
 
 		runIndividualTestCase(t, tc.testCase, tp)
+
+		require.NoError(t, tp.Shutdown(context.Background()))
 	}
 }
 
@@ -566,6 +581,8 @@ func TestSpanProcessor_skipSpan(t *testing.T) {
 	for _, tc := range testCases {
 		runIndividualTestCase(t, tc, tp)
 	}
+
+	require.NoError(t, tp.Shutdown(context.Background()))
 }
 
 func generateTraceDataSetStatus(code ptrace.StatusCode, description string, attrs map[string]any) ptrace.Traces {
@@ -594,6 +611,7 @@ func TestSpanProcessor_setStatusCode(t *testing.T) {
 	td := generateTraceDataSetStatus(ptrace.StatusCodeUnset, "foobar", nil)
 
 	assert.NoError(t, tp.ConsumeTraces(context.Background(), td))
+	assert.NoError(t, tp.Shutdown(context.Background()))
 
 	assert.EqualValues(t, generateTraceDataSetStatus(ptrace.StatusCodeError, "Set custom error message", nil), td)
 }
@@ -650,4 +668,126 @@ func TestSpanProcessor_setStatusCodeConditionally(t *testing.T) {
 				tc.outputStatusDescription, tc.inputAttributes), td))
 		})
 	}
+
+	require.NoError(t, tp.Shutdown(context.Background()))
+}
+
+func TestNormalizedQueryCost(t *testing.T) {
+	nq := &NormalizedQuery{
+		Query: "SELECT * FROM users WHERE id = ?",
+		Metadata: &sqllexer.StatementMetadata{
+			Size: 123, // hypothetical value
+		},
+	}
+
+	expectedCost := int64(len(nq.Query)) + int64(nq.Metadata.Size)
+	assert.Equal(t, expectedCost, nq.Cost())
+}
+
+func TestIsSQL(t *testing.T) {
+	testCases := []struct {
+		dbSystem string
+		expected bool
+	}{
+		{conventions.AttributeDBSystemCockroachdb, true},
+		{conventions.AttributeDBSystemDB2, true},
+		{conventions.AttributeDBSystemDynamoDB, false}, // NoSQL database
+		{"unknown-db", false},
+	}
+
+	for _, tc := range testCases {
+		result := isSQL(tc.dbSystem)
+		assert.Equal(t, tc.expected, result, "isSQL(%q) = %v; want %v", tc.dbSystem, result, tc.expected)
+	}
+}
+
+func TestProcessSQLAttributes(t *testing.T) {
+	factory := NewFactory()
+	cfg := factory.CreateDefaultConfig()
+	oCfg := cfg.(*Config)
+	oCfg.Attributes = &Attributes{
+		DB: &DBConfig{
+			SQL: &SQLConfig{
+				Enabled:        true,
+				OperationName:  true,
+				CollectionName: true,
+			},
+		},
+	}
+
+	tp, err := factory.CreateTraces(context.Background(), processortest.NewNopSettings(), oCfg, consumertest.NewNop())
+	require.NoError(t, err)
+	require.NotNil(t, tp)
+
+	td := ptrace.NewTraces()
+	rs := td.ResourceSpans().AppendEmpty()
+	span := rs.ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+	attrs := span.Attributes()
+	attrs.PutStr(conventions.AttributeDBSystem, conventions.AttributeDBSystemMySQL)
+	attrs.PutStr(conventions.AttributeDBQueryText, "/* query.digest=46f6d7bdae8dd8e8c907aed02b0e6525 tx=vjxn46eyxp */ \nselect /*+ MAX_EXECUTION_TIME(?) */ table.id as id1_6_0_, table.created_at as created_2_6_0_, table.updated_at as updated_3_6_0_, table.description as descript4_6_0_, table.is_internal as is_inter5_6_0_, table.name as name6_6_0_ \nfrom \n\"table\" \nwhere table.id in ('x', 'y', 'z')")
+
+	assert.NoError(t, tp.ConsumeTraces(context.Background(), td))
+
+	// Verify that the db.sql.query attribute has been normalized
+	queryAttr, ok := span.Attributes().Get(conventions.AttributeDBQueryText)
+	assert.True(t, ok)
+	expectedQuery := "select table.id, table.created_at, table.updated_at, table.description, table.is_internal, table.name from table where table.id in (?)"
+	assert.Equal(t, expectedQuery, queryAttr.Str())
+
+	// Verify that db.collection.name attribute is set
+	collectionAttr, ok := span.Attributes().Get(conventions.AttributeDBCollectionName)
+	assert.True(t, ok)
+	assert.Equal(t, "table", collectionAttr.Str())
+
+	// Verify that db.operation.name attribute is set
+	operationAttr, ok := span.Attributes().Get(conventions.AttributeDBOperationName)
+	assert.True(t, ok)
+	assert.Equal(t, "SELECT", operationAttr.Str())
+
+	require.NoError(t, tp.Shutdown(context.Background()))
+}
+
+func TestProcessSQLAttributes_disabled(t *testing.T) {
+	factory := NewFactory()
+	cfg := factory.CreateDefaultConfig()
+	oCfg := cfg.(*Config)
+	oCfg.Attributes = &Attributes{
+		DB: &DBConfig{
+			SQL: &SQLConfig{
+				Enabled:        false,
+				OperationName:  true,
+				CollectionName: true,
+			},
+		},
+	}
+
+	tp, err := factory.CreateTraces(context.Background(), processortest.NewNopSettings(), oCfg, consumertest.NewNop())
+	require.NoError(t, err)
+	require.NotNil(t, tp)
+
+	query := "/* query.digest=46f6d7bdae8dd8e8c907aed02b0e6525 tx=vjxn46eyxp */ \nselect /*+ MAX_EXECUTION_TIME(?) */ table.id as id1_6_0_, table.created_at as created_2_6_0_, table.updated_at as updated_3_6_0_, table.description as descript4_6_0_, table.is_internal as is_inter5_6_0_, table.name as name6_6_0_ \nfrom \n\"table\" \nwhere table.id in ('x', 'y', 'z')"
+
+	td := ptrace.NewTraces()
+	rs := td.ResourceSpans().AppendEmpty()
+	span := rs.ScopeSpans().AppendEmpty().Spans().AppendEmpty()
+	attrs := span.Attributes()
+	attrs.PutStr(conventions.AttributeDBSystem, conventions.AttributeDBSystemMySQL)
+	attrs.PutStr(conventions.AttributeDBQueryText, query)
+
+	assert.NoError(t, tp.ConsumeTraces(context.Background(), td))
+
+	// Verify that the db.sql.query attribute hasn't changed
+	queryAttr, ok := span.Attributes().Get(conventions.AttributeDBQueryText)
+	assert.True(t, ok)
+	assert.Equal(t, query, queryAttr.Str())
+
+	// Verify that db.collection.name attribute was not set
+	_, ok = span.Attributes().Get(conventions.AttributeDBCollectionName)
+	assert.False(t, ok)
+
+	// Verify that db.operation.name attribute was not set
+	_, ok = span.Attributes().Get(conventions.AttributeDBOperationName)
+	assert.False(t, ok)
+
+	require.NoError(t, tp.Shutdown(context.Background()))
 }

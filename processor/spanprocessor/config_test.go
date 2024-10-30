@@ -97,6 +97,48 @@ func TestLoadingConfig(t *testing.T) {
 				},
 			},
 		},
+		{
+			id: component.MustNewIDWithName("span", "attributes_sql_enabled_full"),
+			expected: &Config{
+				Attributes: &Attributes{
+					DB: &DBConfig{
+						SQL: &SQLConfig{
+							Enabled:        true,
+							CollectionName: true,
+							OperationName:  true,
+						},
+					},
+				},
+			},
+		},
+		{
+			id: component.MustNewIDWithName("span", "attributes_sql_enabled_simple"),
+			expected: &Config{
+				Attributes: &Attributes{
+					DB: &DBConfig{
+						SQL: &SQLConfig{
+							Enabled:        true,
+							CollectionName: false,
+							OperationName:  false,
+						},
+					},
+				},
+			},
+		},
+		{
+			id: component.MustNewIDWithName("span", "attributes_sql_disabled"),
+			expected: &Config{
+				Attributes: &Attributes{
+					DB: &DBConfig{
+						SQL: &SQLConfig{
+							Enabled:        false,
+							CollectionName: true,
+							OperationName:  true,
+						},
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.id.String(), func(t *testing.T) {

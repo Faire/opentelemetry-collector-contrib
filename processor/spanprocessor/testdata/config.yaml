@@ -97,3 +97,31 @@ span/set_status_ok:
         value: 400
   status:
     code: "Ok"
+
+# Enabled SQL attributes processor with all options enabled.
+# Will normalize the db.query.text attribute, and add db.collection.name and db.operation.name attributes extracted from the query.
+span/attributes_sql_enabled_full:
+  attributes:
+    db:
+      sql:
+        enabled: true
+        collection_name: true
+        operation_name: true
+
+# Enabled SQL attributes processor without any options enabled.
+# Will normalize the db.query.text attribute, but will not add any new attributes.
+span/attributes_sql_enabled_simple:
+  attributes:
+    db:
+      sql:
+        enabled: true
+
+# SQL attributes processor disabled even with all options enabled.
+# Won't do anything
+span/attributes_sql_disabled:
+  attributes:
+    db:
+      sql:
+        enabled: false
+        collection_name: true
+        operation_name: true

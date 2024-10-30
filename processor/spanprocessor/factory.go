@@ -30,7 +30,7 @@ var processorCapabilities = consumer.Capabilities{MutatesData: true}
 //
 //	Move this to the error package that allows for span name and field to be specified.
 var (
-	errMissingRequiredField       = errors.New("error creating \"span\" processor: either \"from_attributes\" or \"to_attributes\" must be specified in \"name:\" or \"setStatus\" must be specified")
+	errMissingRequiredField       = errors.New("error creating \"span\" processor: either \"from_attributes\" or \"to_attributes\" must be specified in \"name:\", or \"setStatus\" or \"attributes\" instead")
 	errIncorrectStatusCode        = errors.New("error creating \"span\" processor: \"status\" must have specified \"code\" as \"Ok\" or \"Error\" or \"Unset\"")
 	errIncorrectStatusDescription = errors.New("error creating \"span\" processor: \"description\" can be specified only for \"code\" \"Error\"")
 )
@@ -53,13 +53,11 @@ func createTracesProcessor(
 	cfg component.Config,
 	nextConsumer consumer.Traces,
 ) (processor.Traces, error) {
-
-	// 'from_attributes' or 'to_attributes' under 'name' has to be set for the span
-	// processor to be valid. If not set and not enforced, the processor would do no work.
 	oCfg := cfg.(*Config)
 	if len(oCfg.Rename.FromAttributes) == 0 &&
 		(oCfg.Rename.ToAttributes == nil || len(oCfg.Rename.ToAttributes.Rules) == 0) &&
-		oCfg.SetStatus == nil {
+		oCfg.SetStatus == nil &&
+		oCfg.Attributes == nil {
 		return nil, errMissingRequiredField
 	}
 
@@ -82,5 +80,6 @@ func createTracesProcessor(
 		cfg,
 		nextConsumer,
 		sp.processTraces,
-		processorhelper.WithCapabilities(processorCapabilities))
+		processorhelper.WithCapabilities(processorCapabilities),
+		processorhelper.WithShutdown(sp.Shutdown))
 }

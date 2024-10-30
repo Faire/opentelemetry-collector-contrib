@@ -25,6 +25,9 @@ type Config struct {
 
 	// SetStatus specifies status which should be set for this span.
 	SetStatus *Status `mapstructure:"status"`
+
+	// Attributes specifies the configuration for extract, modify, and add span attributes.
+	Attributes *Attributes `mapstructure:"attributes"`
 }
 
 // Name specifies the attributes to use to re-name a span.
@@ -68,6 +71,29 @@ type ToAttributes struct {
 	// match. If it is false rule processing will continue to be performed over the
 	// modified span name.
 	BreakAfterMatch bool `mapstructure:"break_after_match"`
+}
+
+// Attributes specifies the configuration for handling span attributes.
+type Attributes struct {
+	DB *DBConfig `mapstructure:"db"`
+}
+
+// DBConfig holds the config for handling DB spans (contains "db.system" attribute).
+type DBConfig struct {
+	// SQL holds the obfuscation configuration for SQL queries.
+	SQL *SQLConfig `mapstructure:"sql"`
+}
+
+// SQLConfig holds the config for handling SQL spans.
+type SQLConfig struct {
+	// Enabled enable/disable the configuration for SQL spans.
+	Enabled bool `mapstructure:"enabled"`
+
+	// CollectionName specifies whether the processor should extract and set the table name as "db.collection.name" span attribute.
+	CollectionName bool `mapstructure:"collection_name"`
+
+	// OperationName specifies whether the processor should extract and set the operation/procedure as "db.operation.name".
+	OperationName bool `mapstructure:"operation_name"`
 }
 
 type Status struct {
