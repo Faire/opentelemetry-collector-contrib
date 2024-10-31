@@ -37,6 +37,7 @@ type datadogReceiver struct {
 
 	metricsTranslator *translator.MetricsTranslator
 	statsTranslator   *translator.StatsTranslator
+	tracesTranslator  *translator.TracesTranslator
 
 	server    *http.Server
 	tReceiver *receiverhelper.ObsReport
@@ -149,6 +150,7 @@ func newDataDogReceiver(config *Config, params receiver.Settings) (component.Com
 		tReceiver:         instance,
 		metricsTranslator: translator.NewMetricsTranslator(params.BuildInfo),
 		statsTranslator:   translator.NewStatsTranslator(),
+		tracesTranslator:  translator.NewTracesTranslator(config),
 	}, nil
 }
 
@@ -235,7 +237,7 @@ func (ddr *datadogReceiver) handleTraces(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	for _, ddTrace := range ddTraces {
-		otelTraces := translator.ToTraces(ddTrace, req)
+		otelTraces := ddr.tracesTranslator.ToTraces(ddTrace, req)
 		spanCount = otelTraces.SpanCount()
 		err = ddr.nextTracesConsumer.ConsumeTraces(obsCtx, otelTraces)
 		if err != nil {
