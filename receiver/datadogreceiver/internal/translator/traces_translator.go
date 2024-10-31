@@ -25,6 +25,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/datadogreceiver"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/zipkin/zipkinv2"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/datadogreceiver/internal/translator/header"
 )
 
@@ -123,6 +124,8 @@ func (tt *TracesTranslator) ToTraces(payload *pb.TracerPayload, req *http.Reques
 				groupByService[span.Service] = slice
 			}
 			newSpan := slice.AppendEmpty()
+
+			_ = zipkinv2.TagsToSpanLinks(span.GetMeta(), newSpan.Links())
 
 			newSpan.SetTraceID(uInt64ToTraceID(0, span.TraceID))
 			newSpan.SetSpanID(uInt64ToSpanID(span.SpanID))
