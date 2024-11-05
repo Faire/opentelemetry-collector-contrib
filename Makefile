@@ -284,9 +284,9 @@ run:
 .PHONY: docker-component # Not intended to be used directly
 docker-component: check-component
 	GOOS=linux GOARCH=amd64 $(MAKE) $(COMPONENT)
-	cp ./bin/$(COMPONENT)_linux_amd64 ./cmd/$(COMPONENT)/$(COMPONENT)
+	cp ./bin/$(COMPONENT)_linux_amd64 ./cmd/$(COMPONENT)/$(ARTIFACT)
 	docker build -t $(COMPONENT) ./cmd/$(COMPONENT)/
-	rm ./cmd/$(COMPONENT)/$(COMPONENT)
+	rm ./cmd/$(COMPONENT)/$(ARTIFACT)
 
 .PHONY: check-component
 check-component:
@@ -296,14 +296,7 @@ endif
 
 .PHONY: docker-otelcontribcol
 docker-otelcontribcol:
-	COMPONENT=otelcontribcol $(MAKE) docker-component
-
-.PHONY: docker-build-release
-docker-build-release:
-	GOOS=linux GOARCH=amd64 $(MAKE) otelcontribcol
-	cp ./bin/otelcontribcol_linux_amd64 ./cmd/otelcontribcol/otelcol-contrib
-	docker build -t otelcontribcol ./cmd/otelcontribcol/
-	rm ./cmd/otelcontribcol/otelcol-contrib
+	COMPONENT=otelcontribcol ARTIFACT=otelcol-contrib $(MAKE) docker-component
 
 .PHONY: docker-telemetrygen
 docker-telemetrygen:
