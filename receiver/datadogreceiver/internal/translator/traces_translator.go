@@ -24,8 +24,8 @@ import (
 	semconv "go.opentelemetry.io/collector/semconv/v1.16.0"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/datadogreceiver"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/zipkin/zipkinv2"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/datadogreceiver/config"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/datadogreceiver/internal/translator/header"
 )
 
@@ -56,13 +56,13 @@ const (
 type TracesTranslator struct {
 	obfuscator *obfuscate.Obfuscator
 
-	conf *datadogreceiver.TracesConfig
+	conf *config.TracesConfig
 }
 
-func NewTracesTranslator(config *datadogreceiver.Config) *TracesTranslator {
+func NewTracesTranslator(config config.TracesConfig) *TracesTranslator {
 	return &TracesTranslator{
-		obfuscator: obfuscate.NewObfuscator(config.Traces.Obfuscation.Export()),
-		conf:       &config.Traces,
+		obfuscator: obfuscate.NewObfuscator(config.Obfuscation.Export()),
+		conf:       &config,
 	}
 }
 

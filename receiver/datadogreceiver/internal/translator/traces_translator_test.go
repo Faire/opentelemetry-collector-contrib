@@ -93,7 +93,7 @@ func TestTracePayloadV05Unmarshalling(t *testing.T) {
 	assert.Len(t, tracePayloads, 1, "Expected one translated payload")
 	tracePayload := tracePayloads[0]
 
-	tt := NewTracesTranslator(datadogreceiver.NewConfig())
+	tt := NewTracesTranslator(datadogreceiver.NewConfig().Traces)
 	translated := tt.ToTraces(tracePayload, req)
 	assert.Equal(t, 1, translated.SpanCount(), "Span Count wrong")
 	span := translated.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0)
@@ -137,7 +137,7 @@ func TestTracePayloadV05UnmarshallingObfuscateSQL(t *testing.T) {
 	cfg := datadogreceiver.NewConfig()
 	cfg.Traces.Obfuscation.Enabled = true
 
-	tt := NewTracesTranslator(cfg)
+	tt := NewTracesTranslator(cfg.Traces)
 	translated := tt.ToTraces(tracePayload, req)
 	assert.Equal(t, 1, translated.SpanCount(), "Span Count wrong")
 	span := translated.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0)

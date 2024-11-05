@@ -150,7 +150,7 @@ func newDataDogReceiver(config *Config, params receiver.Settings) (component.Com
 		tReceiver:         instance,
 		metricsTranslator: translator.NewMetricsTranslator(params.BuildInfo),
 		statsTranslator:   translator.NewStatsTranslator(),
-		tracesTranslator:  translator.NewTracesTranslator(config),
+		tracesTranslator:  translator.NewTracesTranslator(config.Traces),
 	}, nil
 }
 
