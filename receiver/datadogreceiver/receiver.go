@@ -209,7 +209,6 @@ func (ddr *datadogReceiver) buildInfoResponse(endpoints []Endpoint) ([]byte, err
 // handleInfo handles incoming /info payloads.
 func (ddr *datadogReceiver) handleInfo(w http.ResponseWriter, _ *http.Request, infoResponse []byte) {
 	_, err := fmt.Fprintf(w, "%s", infoResponse)
-
 	if err != nil {
 		ddr.params.Logger.Error("Error writing /info endpoint response", zap.Error(err))
 		http.Error(w, "Error writing /info endpoint response", http.StatusInternalServerError)
@@ -425,7 +424,7 @@ func (ddr *datadogReceiver) handleIntake(w http.ResponseWriter, req *http.Reques
 		ddr.tReceiver.EndMetricsOp(obsCtx, "datadog", *metricsCount, err)
 	}(&metricsCount)
 
-	err = fmt.Errorf("intake endpoint not implemented")
+	err = errors.New("intake endpoint not implemented")
 	http.Error(w, err.Error(), http.StatusMethodNotAllowed)
 	ddr.params.Logger.Warn("metrics consumer errored out", zap.Error(err))
 }
@@ -439,7 +438,7 @@ func (ddr *datadogReceiver) handleDistributionPoints(w http.ResponseWriter, req 
 		ddr.tReceiver.EndMetricsOp(obsCtx, "datadog", *metricsCount, err)
 	}(&metricsCount)
 
-	err = fmt.Errorf("distribution points endpoint not implemented")
+	err = errors.New("distribution points endpoint not implemented")
 	http.Error(w, err.Error(), http.StatusMethodNotAllowed)
 	ddr.params.Logger.Warn("metrics consumer errored out", zap.Error(err))
 }
@@ -448,7 +447,7 @@ func (ddr *datadogReceiver) handleDistributionPoints(w http.ResponseWriter, req 
 func (ddr *datadogReceiver) handleStats(w http.ResponseWriter, req *http.Request) {
 	obsCtx := ddr.tReceiver.StartMetricsOp(req.Context())
 	var err error
-	var metricsCount = 0
+	metricsCount := 0
 	defer func(metricsCount *int) {
 		ddr.tReceiver.EndMetricsOp(obsCtx, "datadog", *metricsCount, err)
 	}(&metricsCount)
@@ -464,7 +463,6 @@ func (ddr *datadogReceiver) handleStats(w http.ResponseWriter, req *http.Request
 	}
 
 	metrics, err := ddr.statsTranslator.TranslateStats(clientStats, req.Header.Get(header.Lang), req.Header.Get(header.TracerVersion))
-
 	if err != nil {
 		ddr.params.Logger.Error("Error translating stats", zap.Error(err))
 		http.Error(w, "Error translating stats", http.StatusBadRequest)
