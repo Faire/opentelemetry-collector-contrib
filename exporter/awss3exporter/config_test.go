@@ -5,13 +5,13 @@ package awss3exporter
 
 import (
 	"errors"
-	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.opentelemetry.io/collector/otelcol/otelcoltest"
 	"go.uber.org/multierr"
 
