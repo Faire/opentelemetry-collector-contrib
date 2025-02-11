@@ -22,9 +22,9 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	semconv "go.opentelemetry.io/collector/semconv/v1.16.0"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/zipkin/zipkinv2"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/datadogreceiver/config"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/datadogreceiver/internal/translator/header"
 )
@@ -125,7 +125,7 @@ func (tt *TracesTranslator) ToTraces(payload *pb.TracerPayload, req *http.Reques
 			}
 			newSpan := slice.AppendEmpty()
 
-			_ = zipkinv2.TagsToSpanLinks(span.GetMeta(), newSpan.Links())
+			_ = tagsToSpanLinks(span.GetMeta(), newSpan.Links())
 
 			newSpan.SetTraceID(uInt64ToTraceID(0, span.TraceID))
 			newSpan.SetSpanID(uInt64ToSpanID(span.SpanID))
@@ -192,6 +192,57 @@ func (tt *TracesTranslator) ToTraces(payload *pb.TracerPayload, req *http.Reques
 	}
 
 	return results
+}
+
+// DDSpanLink represents the structure of each JSON object
+type DDSpanLink struct {
+	TraceID    string         `json:"trace_id"`
+	SpanID     string         `json:"span_id"`
+	Tracestate string         `json:"tracestate"`
+	Attributes map[string]any `json:"attributes"`
+}
+
+func tagsToSpanLinks(tags map[string]string, dest ptrace.SpanLinkSlice) error {
+	key := "_dd.span_links"
+	val, ok := tags[key]
+	if !ok {
+		return nil
+	}
+	delete(tags, key)
+
+	var spans []DDSpanLink
+	err := json.Unmarshal([]byte(val), &spans)
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < len(spans); i++ {
+		span := spans[i]
+		link := dest.AppendEmpty()
+
+		// Convert trace id.
+		rawTrace, errTrace := trace.TraceIDFromHex(span.TraceID)
+		if errTrace != nil {
+			return errTrace
+		}
+		link.SetTraceID(pcommon.TraceID(rawTrace))
+
+		// Convert span id.
+		rawSpan, errSpan := trace.SpanIDFromHex(span.SpanID)
+		if errSpan != nil {
+			return errSpan
+		}
+		link.SetSpanID(pcommon.SpanID(rawSpan))
+
+		link.TraceState().FromRaw(span.Tracestate)
+
+		err = link.Attributes().FromRaw(span.Attributes)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 var bufferPool = sync.Pool{

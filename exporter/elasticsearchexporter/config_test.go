@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/confmap/confmaptest"
+	"go.opentelemetry.io/collector/confmap/xconfmap"
 	"go.opentelemetry.io/collector/exporter/exporterbatcher"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 
@@ -71,6 +72,9 @@ func TestConfig(t *testing.T) {
 				},
 				TracesIndex: "trace_index",
 				TracesDynamicIndex: DynamicIndexSetting{
+					Enabled: false,
+				},
+				LogsDynamicID: DynamicIDSettings{
 					Enabled: false,
 				},
 				Pipeline: "mypipeline",
@@ -144,6 +148,9 @@ func TestConfig(t *testing.T) {
 				TracesDynamicIndex: DynamicIndexSetting{
 					Enabled: false,
 				},
+				LogsDynamicID: DynamicIDSettings{
+					Enabled: false,
+				},
 				Pipeline: "mypipeline",
 				ClientConfig: withDefaultHTTPClientConfig(func(cfg *confighttp.ClientConfig) {
 					cfg.Timeout = 2 * time.Minute
@@ -213,6 +220,9 @@ func TestConfig(t *testing.T) {
 				},
 				TracesIndex: "traces-generic-default",
 				TracesDynamicIndex: DynamicIndexSetting{
+					Enabled: false,
+				},
+				LogsDynamicID: DynamicIDSettings{
 					Enabled: false,
 				},
 				Pipeline: "mypipeline",
@@ -330,7 +340,7 @@ func TestConfig(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, sub.Unmarshal(cfg))
 
-			assert.NoError(t, component.ValidateConfig(cfg))
+			assert.NoError(t, xconfmap.Validate(cfg))
 			assert.Equal(t, tt.expected, cfg)
 		})
 	}
@@ -418,7 +428,7 @@ func TestConfig_Validate(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			assert.EqualError(t, component.ValidateConfig(tt.config), tt.err)
+			assert.ErrorContains(t, xconfmap.Validate(tt.config), tt.err)
 		})
 	}
 }
@@ -427,14 +437,14 @@ func TestConfig_Validate_Environment(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		t.Setenv("ELASTICSEARCH_URL", "http://test:9200")
 		config := withDefaultConfig()
-		err := component.ValidateConfig(config)
+		err := xconfmap.Validate(config)
 		require.NoError(t, err)
 	})
 	t.Run("invalid", func(t *testing.T) {
 		t.Setenv("ELASTICSEARCH_URL", "http://valid:9200, *:!")
 		config := withDefaultConfig()
-		err := component.ValidateConfig(config)
-		assert.EqualError(t, err, `invalid endpoint "*:!": parse "*:!": first path segment in URL cannot contain colon`)
+		err := xconfmap.Validate(config)
+		assert.ErrorContains(t, err, `invalid endpoint "*:!": parse "*:!": first path segment in URL cannot contain colon`)
 	})
 }
 
