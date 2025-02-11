@@ -66,9 +66,9 @@ https://github.com/open-telemetry/opentelemetry-collector/tree/main/config/confi
 - `dd.span.Resource`: The datadog resource name (as distinct from the span name)
 
 ### Optional Attributes
-- `otlp.link.%d`: This receiver supports `otlp.link.%d` attributes, which are used to create Span Links.
-  The `%d` is a placeholder for the link index. The value of the attribute is a span context serialized as a string separated by `|`, in the format of `trace_id|span_id|tracestate|json_attributes|dropped_attributes_count`.
-  Examples can be found [here](../../pkg/translator/zipkin/zipkinv2/to_translator_test.go).
+
+- `_dd.span_links`: This receiver supports DD Agent's `_dd.span_links` attribute for span links creation, as produced by Datadog's tracing libraries. 
+Format example can be found [here](./internal/translator/traces_translator_test.go).
 
 ### Datadog's API support
 
