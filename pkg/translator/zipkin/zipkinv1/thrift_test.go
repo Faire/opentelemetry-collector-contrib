@@ -19,7 +19,7 @@ import (
 	conventions "go.opentelemetry.io/collector/semconv/v1.6.1"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal/tracetranslator"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/zipkin/internal/zipkin"
+	zipkin "github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/zipkin/zipkinthriftconverter"
 )
 
 // compareTraces compares got to want while ignoring order. Both are modified in place.
@@ -443,7 +443,7 @@ func TestThriftHTTPToStatusCode(t *testing.T) {
 		}})
 		require.NoError(t, err)
 		gs := td.ResourceSpans().At(0).ScopeSpans().At(0).Spans().At(0)
-		require.EqualValues(t, wantStatus, gs.Status().Code(), "Unsuccessful conversion %d", i)
+		require.Equal(t, wantStatus, gs.Status().Code(), "Unsuccessful conversion %d", i)
 	}
 }
 

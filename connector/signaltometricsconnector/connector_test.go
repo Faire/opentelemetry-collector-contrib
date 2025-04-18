@@ -130,8 +130,8 @@ func TestConnectorWithLogs(t *testing.T) {
 
 func BenchmarkConnectorWithTraces(b *testing.B) {
 	factory := NewFactory()
-	settings := connectortest.NewNopSettings()
-	settings.TelemetrySettings.Logger = zaptest.NewLogger(b, zaptest.Level(zapcore.DebugLevel))
+	settings := connectortest.NewNopSettings(metadata.Type)
+	settings.Logger = zaptest.NewLogger(b, zaptest.Level(zapcore.DebugLevel))
 	next, err := consumer.NewMetrics(func(context.Context, pmetric.Metrics) error {
 		return nil
 	})
@@ -156,8 +156,8 @@ func BenchmarkConnectorWithTraces(b *testing.B) {
 
 func BenchmarkConnectorWithMetrics(b *testing.B) {
 	factory := NewFactory()
-	settings := connectortest.NewNopSettings()
-	settings.TelemetrySettings.Logger = zaptest.NewLogger(b, zaptest.Level(zapcore.DebugLevel))
+	settings := connectortest.NewNopSettings(metadata.Type)
+	settings.Logger = zaptest.NewLogger(b, zaptest.Level(zapcore.DebugLevel))
 	next, err := consumer.NewMetrics(func(context.Context, pmetric.Metrics) error {
 		return nil
 	})
@@ -182,8 +182,8 @@ func BenchmarkConnectorWithMetrics(b *testing.B) {
 
 func BenchmarkConnectorWithLogs(b *testing.B) {
 	factory := NewFactory()
-	settings := connectortest.NewNopSettings()
-	settings.TelemetrySettings.Logger = zaptest.NewLogger(b, zaptest.Level(zapcore.DebugLevel))
+	settings := connectortest.NewNopSettings(metadata.Type)
+	settings.Logger = zaptest.NewLogger(b, zaptest.Level(zapcore.DebugLevel))
 	next, err := consumer.NewMetrics(func(context.Context, pmetric.Metrics) error {
 		return nil
 	})
@@ -288,9 +288,9 @@ func setupConnector(
 ) (connector.Factory, connector.Settings, component.Config) {
 	t.Helper()
 	factory := NewFactory()
-	settings := connectortest.NewNopSettings()
-	telemetryResource(t).CopyTo(settings.TelemetrySettings.Resource)
-	settings.TelemetrySettings.Logger = zaptest.NewLogger(t, zaptest.Level(zapcore.DebugLevel))
+	settings := connectortest.NewNopSettings(metadata.Type)
+	telemetryResource(t).CopyTo(settings.Resource)
+	settings.Logger = zaptest.NewLogger(t, zaptest.Level(zapcore.DebugLevel))
 
 	cfg := createDefaultConfig()
 	cm, err := confmaptest.LoadConf(filepath.Join(testFilePath, "config.yaml"))

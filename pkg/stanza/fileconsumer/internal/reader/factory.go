@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/collector/component"
@@ -24,8 +25,9 @@ import (
 )
 
 const (
-	DefaultMaxLogSize  = 1024 * 1024
-	DefaultFlushPeriod = 500 * time.Millisecond
+	DefaultMaxLogSize   = 1024 * 1024
+	DefaultFlushPeriod  = 500 * time.Millisecond
+	DefaultMaxBatchSize = 100
 )
 
 type Factory struct {
@@ -33,6 +35,7 @@ type Factory struct {
 	HeaderConfig            *header.Config
 	FromBeginning           bool
 	FingerprintSize         int
+	BufPool                 sync.Pool
 	InitialBufferSize       int
 	MaxLogSize              int
 	Encoding                encoding.Encoding
@@ -59,34 +62,30 @@ func (f *Factory) NewReader(file *os.File, fp *fingerprint.Fingerprint) (*Reader
 	m := &Metadata{
 		Fingerprint:    fp,
 		FileAttributes: attributes,
-		TokenLenState:  &tokenlen.State{},
-	}
-	if f.FlushTimeout > 0 {
-		m.FlushState = &flush.State{LastDataChange: time.Now()}
+		TokenLenState:  tokenlen.State{},
+		FlushState: flush.State{
+			LastDataChange: time.Now(),
+		},
 	}
 	return f.NewReaderFromMetadata(file, m)
 }
 
 func (f *Factory) NewReaderFromMetadata(file *os.File, m *Metadata) (r *Reader, err error) {
-	// Ensure TokenLenState is initialized
-	if m.TokenLenState == nil {
-		m.TokenLenState = &tokenlen.State{}
-	}
-
 	r = &Reader{
-		Metadata:             m,
-		set:                  f.TelemetrySettings,
-		file:                 file,
-		fileName:             file.Name(),
-		fingerprintSize:      f.FingerprintSize,
-		initialBufferSize:    f.InitialBufferSize,
-		maxLogSize:           f.MaxLogSize,
-		decoder:              f.Encoding.NewDecoder(),
-		deleteAtEOF:          f.DeleteAtEOF,
-		includeFileRecordNum: f.IncludeFileRecordNumber,
-		compression:          f.Compression,
-		acquireFSLock:        f.AcquireFSLock,
-		emitFunc:             f.EmitFunc,
+		Metadata:          m,
+		set:               f.TelemetrySettings,
+		file:              file,
+		fileName:          file.Name(),
+		fingerprintSize:   f.FingerprintSize,
+		bufPool:           &f.BufPool,
+		initialBufferSize: f.InitialBufferSize,
+		maxLogSize:        f.MaxLogSize,
+		decoder:           f.Encoding.NewDecoder(),
+		deleteAtEOF:       f.DeleteAtEOF,
+		compression:       f.Compression,
+		acquireFSLock:     f.AcquireFSLock,
+		maxBatchSize:      DefaultMaxBatchSize,
+		emitFunc:          f.EmitFunc,
 	}
 	r.set.Logger = r.set.Logger.With(zap.String("path", r.fileName))
 
